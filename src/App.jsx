@@ -8,6 +8,7 @@ const TOOL_LABELS = {
   visualization: 'Visio (embedded in Confluence)',
   notifications: 'Slack (via Jira + Power Automate)',
   metrics: 'Power BI (embedded in Confluence)',
+  nextActions: 'Jira Cloud (exportable to other tools)',
 }
 
 const circles = [
@@ -328,12 +329,119 @@ const circles = [
 const tabs = [
   { id: 'roles', label: 'Roles' },
   { id: 'projects', label: 'Projects' },
+  { id: 'next-actions', label: 'Next Actions' },
   { id: 'governance', label: 'Governance' },
   { id: 'notifications', label: 'Notifications' },
 ]
 
 const STALE_DAYS = 14
 const HUB_URL = 'https://confluence.company.com/display/HOL/Holacracy+Hub'
+const NEXT_ACTION_FIELDS = [
+  'actionId',
+  'circleId',
+  'roleId',
+  'projectKey',
+  'actionTitle',
+  'owner',
+  'dueDate',
+  'status',
+  'priority',
+  'source',
+  'createdFromDecisionId',
+]
+
+const nextActions = [
+  {
+    actionId: 'NA-101',
+    circleId: 'operations',
+    roleId: 'ops-facilitator',
+    projectKey: 'OPS-41',
+    actionTitle: 'Schedule incident command simulation',
+    owner: 'Maria Costa',
+    dueDate: '2026-04-11',
+    status: 'in_progress',
+    priority: 'High',
+    source: 'tactical',
+    createdFromDecisionId: 'ops-g2',
+    tension: 'Incident response readiness is inconsistent between shifts.',
+    idealOutcome: 'Every shift can run the same command protocol confidently.',
+  },
+  {
+    actionId: 'NA-102',
+    circleId: 'operations',
+    roleId: 'ops-resource',
+    projectKey: 'OPS-52',
+    actionTitle: 'Nominate owner for capacity board',
+    owner: 'Unassigned',
+    dueDate: '2026-04-10',
+    status: 'blocked',
+    priority: 'High',
+    source: 'tactical',
+    createdFromDecisionId: 'ops-g1',
+    tension: 'Capacity allocation has no explicit accountable owner.',
+    idealOutcome: 'One owner updates and publishes allocation weekly.',
+  },
+  {
+    actionId: 'NA-201',
+    circleId: 'product',
+    roleId: 'prod-strategy',
+    projectKey: 'PROD-88',
+    actionTitle: 'Confirm onboarding KPI baseline',
+    owner: 'Daniel Reed',
+    dueDate: '2026-04-12',
+    status: 'new',
+    priority: 'Medium',
+    source: 'tactical',
+    createdFromDecisionId: 'prod-g2',
+    tension: 'Onboarding goals are debated without shared KPI baseline.',
+    idealOutcome: 'A single KPI baseline is used in all prioritization.',
+  },
+  {
+    actionId: 'NA-202',
+    circleId: 'product',
+    roleId: 'prod-ops',
+    projectKey: 'PROD-92',
+    actionTitle: 'Publish release-note taxonomy',
+    owner: 'Unassigned',
+    dueDate: '2026-04-09',
+    status: 'blocked',
+    priority: 'High',
+    source: 'retro',
+    createdFromDecisionId: 'prod-g3',
+    tension: 'Release notes are inconsistent across squads.',
+    idealOutcome: 'Every release uses a common taxonomy and template.',
+  },
+  {
+    actionId: 'NA-301',
+    circleId: 'people',
+    roleId: 'people-learning',
+    projectKey: 'PEOP-17',
+    actionTitle: 'Lock mentor cohort assignments',
+    owner: 'Oliver Grant',
+    dueDate: '2026-04-13',
+    status: 'in_progress',
+    priority: 'Medium',
+    source: 'tactical',
+    createdFromDecisionId: 'people-g2',
+    tension: 'Mentor allocation is unclear before cohort launch.',
+    idealOutcome: 'Each participant has a confirmed mentor before kickoff.',
+  },
+  {
+    actionId: 'NA-302',
+    circleId: 'people',
+    roleId: 'people-recruiting',
+    projectKey: 'PEOP-21',
+    actionTitle: 'Define hiring panel SLA',
+    owner: 'Unassigned',
+    dueDate: '2026-04-08',
+    status: 'new',
+    priority: 'High',
+    source: 'tactical',
+    createdFromDecisionId: 'people-g3',
+    tension: 'Hiring panel response times are too variable.',
+    idealOutcome: 'Panel SLA is explicit and monitored weekly.',
+  },
+]
 
 function getDaysSince(dateText) {
   const now = new Date('2026-04-08')
@@ -341,9 +449,39 @@ function getDaysSince(dateText) {
   return Math.floor((now - updated) / (1000 * 60 * 60 * 24))
 }
 
+function toCsv(rows) {
+  const header = NEXT_ACTION_FIELDS.join(',')
+  const body = rows
+    .map((row) =>
+      NEXT_ACTION_FIELDS.map((field) => `"${String(row[field] ?? '').replaceAll('"', '""')}"`).join(','),
+    )
+    .join('\n')
+  return `${header}\n${body}`
+}
+
+function toMarkdownTable(rows) {
+  const header = `| ${NEXT_ACTION_FIELDS.join(' | ')} |`
+  const divider = `| ${NEXT_ACTION_FIELDS.map(() => '---').join(' | ')} |`
+  const body = rows
+    .map((row) => `| ${NEXT_ACTION_FIELDS.map((field) => row[field] ?? '').join(' | ')} |`)
+    .join('\n')
+  return `${header}\n${divider}\n${body}`
+}
+
+function downloadText(filename, content, mimeType) {
+  const blob = new Blob([content], { type: mimeType })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
 function App() {
   const [activeCircleId, setActiveCircleId] = useState(circles[0].id)
   const [activeTab, setActiveTab] = useState('roles')
+  const [exportMessage, setExportMessage] = useState('')
 
   const activeCircle = useMemo(
     () => circles.find((circle) => circle.id === activeCircleId) || circles[0],
@@ -376,6 +514,38 @@ function App() {
   )
   const filledRoles = activeCircle.roles.length - unassignedRoles.length
   const fillRate = Math.round((filledRoles / activeCircle.roles.length) * 100)
+  const circleNextActions = nextActions.filter((action) => action.circleId === activeCircle.id)
+  const overdueActions = circleNextActions.filter(
+    (action) => action.status !== 'done' && getDaysSince(action.dueDate) > 0,
+  )
+
+  const exportNextActionsCsv = () => {
+    downloadText(
+      `${activeCircle.id}-next-actions.csv`,
+      toCsv(circleNextActions),
+      'text/csv;charset=utf-8',
+    )
+    setExportMessage('Exported CSV from mapped Jira-style action data.')
+  }
+
+  const exportNextActionsJson = () => {
+    downloadText(
+      `${activeCircle.id}-next-actions.json`,
+      JSON.stringify(circleNextActions, null, 2),
+      'application/json;charset=utf-8',
+    )
+    setExportMessage('Exported JSON for automation/API handoff.')
+  }
+
+  const copyNextActionsMarkdown = async () => {
+    const markdown = toMarkdownTable(circleNextActions)
+    try {
+      await navigator.clipboard.writeText(markdown)
+      setExportMessage('Copied Markdown table for docs, Notion, or chat.')
+    } catch {
+      setExportMessage('Clipboard copy blocked. Use CSV/JSON download instead.')
+    }
+  }
 
   const alertFeed = [
     ...stalledProjects.slice(0, 1).map(
@@ -627,6 +797,10 @@ function App() {
                   </article>
                 ))}
               </div>
+              <article className="governance-note">
+                Governance here is intentionally scoped to constitutional changes:
+                role definitions, purpose updates, domains, and ratified decisions.
+              </article>
               <div className="section-head metrics-head">
                 <h3>Metrics Dashboard</h3>
                 <span className="tool-badge" title={TOOL_LABELS.metrics}>
@@ -641,7 +815,7 @@ function App() {
                 <article className="metric-card">
                   <span className="metric-label">Active vs stalled</span>
                   <strong>
-                    {activeProjects} active / {stalledProjects.length} stalled
+                    {activeProjects.length} active / {stalledProjects.length} stalled
                   </strong>
                 </article>
                 <article className="metric-card">
@@ -652,6 +826,64 @@ function App() {
                   <span className="metric-label">Delivery throughput</span>
                   <strong>{doneProjects.length} done projects</strong>
                 </article>
+                <article className="metric-card">
+                  <span className="metric-label">Next actions overdue</span>
+                  <strong>{overdueActions.length} overdue actions</strong>
+                </article>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'next-actions' && (
+            <>
+              <div className="section-head">
+                <h3>Next Actions</h3>
+                <span className="tool-badge" title={TOOL_LABELS.nextActions}>
+                  {TOOL_LABELS.nextActions}
+                </span>
+              </div>
+              <p className="actions-intro">
+                Tactical work items that move a present tension toward an ideal outcome.
+                These are operational/project-level actions, separate from governance role design.
+              </p>
+              <div className="actions-toolbar">
+                <button type="button" className="action-btn" onClick={exportNextActionsCsv}>
+                  Export CSV
+                </button>
+                <button type="button" className="action-btn" onClick={exportNextActionsJson}>
+                  Export JSON
+                </button>
+                <button type="button" className="action-btn" onClick={copyNextActionsMarkdown}>
+                  Copy Markdown
+                </button>
+                {exportMessage && <span className="export-message">{exportMessage}</span>}
+              </div>
+              <div className="next-actions-grid">
+                {circleNextActions.map((action) => (
+                  <article key={action.actionId} className="action-card">
+                    <div className="card-title-row">
+                      <h4>{action.actionTitle}</h4>
+                      <span className={`status-pill ${action.status === 'blocked' ? 'stalled' : 'active'}`}>
+                        {action.status.replace('_', ' ')}
+                      </span>
+                    </div>
+                    <p>
+                      <strong>Tension:</strong> {action.tension}
+                    </p>
+                    <p>
+                      <strong>Ideal outcome:</strong> {action.idealOutcome}
+                    </p>
+                    <p>
+                      <strong>Action ID:</strong> {action.actionId} | <strong>Project key:</strong> {action.projectKey}
+                    </p>
+                    <p>
+                      <strong>Owner:</strong> {action.owner} | <strong>Due date:</strong> {action.dueDate}
+                    </p>
+                    <p>
+                      <strong>Priority:</strong> {action.priority} | <strong>Source:</strong> {action.source}
+                    </p>
+                  </article>
+                ))}
               </div>
             </>
           )}

@@ -274,6 +274,22 @@
   margin: 0 0 6px;
 }
 
+.governance-note {
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: #334155;
+  background: #f8fafc;
+  margin: 0 0 12px;
+  font-size: 0.86rem;
+}
+
+.actions-intro {
+  margin: 0 0 10px;
+  color: #475569;
+  font-size: 0.9rem;
+}
+
 .viz-card,
 .it-checklist {
   border: 1px solid #e5e7eb;
@@ -331,6 +347,47 @@
   gap: 10px;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   margin-bottom: 12px;
+}
+
+.next-actions-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  margin-bottom: 12px;
+}
+
+.action-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fcfcfd;
+  padding: 12px;
+}
+
+.actions-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.action-btn {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #0f172a;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.action-btn:hover {
+  background: #f8fafc;
+}
+
+.export-message {
+  font-size: 0.8rem;
+  color: #475569;
 }
 
 .embedded-card,
