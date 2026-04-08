@@ -327,9 +327,9 @@ const circles = [
 ]
 
 const tabs = [
+  { id: 'org-map', label: 'Org Map' },
   { id: 'roles', label: 'Roles' },
   { id: 'projects', label: 'Projects' },
-  { id: 'org-map', label: 'Org Map' },
   { id: 'next-actions', label: 'Next Actions' },
   { id: 'governance', label: 'Governance' },
   { id: 'notifications', label: 'Notifications' },
@@ -486,7 +486,7 @@ function downloadText(filename, content, mimeType) {
 
 function App() {
   const [activeCircleId, setActiveCircleId] = useState(circles[0].id)
-  const [activeTab, setActiveTab] = useState('roles')
+  const [activeTab, setActiveTab] = useState('org-map')
   const [exportMessage, setExportMessage] = useState('')
   const [visualTick, setVisualTick] = useState(0)
   const [lastMapRefresh, setLastMapRefresh] = useState(new Date())
@@ -525,6 +525,24 @@ function App() {
     priority: 'Medium',
     tension: '',
     idealOutcome: '',
+  })
+  const [electionsByCircle, setElectionsByCircle] = useState({})
+  const [meetingElectionDraft, setMeetingElectionDraft] = useState({
+    roleName: '',
+    nominee: '',
+    rationale: '',
+  })
+  const [retrosByCircle, setRetrosByCircle] = useState({})
+  const [meetingRetroDraft, setMeetingRetroDraft] = useState({
+    wentWell: '',
+    toImprove: '',
+    experiment: '',
+  })
+  const [townhallsByCircle, setTownhallsByCircle] = useState({})
+  const [meetingTownhallDraft, setMeetingTownhallDraft] = useState({
+    announcement: '',
+    decision: '',
+    followUp: '',
   })
 
   useEffect(() => {
@@ -742,6 +760,54 @@ function App() {
       tension: '',
       idealOutcome: '',
     })
+  }
+
+  const addElectionFromMeeting = () => {
+    if (!meetingElectionDraft.roleName.trim() || !meetingElectionDraft.nominee.trim()) return
+    const electionRecord = {
+      id: `EL-${Date.now()}`,
+      roleName: meetingElectionDraft.roleName.trim(),
+      nominee: meetingElectionDraft.nominee.trim(),
+      rationale: meetingElectionDraft.rationale.trim() || 'No rationale captured.',
+      createdAt: new Date().toLocaleString(),
+    }
+    setElectionsByCircle((previous) => ({
+      ...previous,
+      [activeCircle.id]: [...(previous[activeCircle.id] || []), electionRecord],
+    }))
+    setMeetingElectionDraft({ roleName: '', nominee: '', rationale: '' })
+  }
+
+  const addRetroFromMeeting = () => {
+    if (!meetingRetroDraft.wentWell.trim() && !meetingRetroDraft.toImprove.trim()) return
+    const retroRecord = {
+      id: `RT-${Date.now()}`,
+      wentWell: meetingRetroDraft.wentWell.trim() || 'Not provided.',
+      toImprove: meetingRetroDraft.toImprove.trim() || 'Not provided.',
+      experiment: meetingRetroDraft.experiment.trim() || 'No experiment set.',
+      createdAt: new Date().toLocaleString(),
+    }
+    setRetrosByCircle((previous) => ({
+      ...previous,
+      [activeCircle.id]: [...(previous[activeCircle.id] || []), retroRecord],
+    }))
+    setMeetingRetroDraft({ wentWell: '', toImprove: '', experiment: '' })
+  }
+
+  const addTownhallFromMeeting = () => {
+    if (!meetingTownhallDraft.announcement.trim()) return
+    const townhallRecord = {
+      id: `TH-${Date.now()}`,
+      announcement: meetingTownhallDraft.announcement.trim(),
+      decision: meetingTownhallDraft.decision.trim() || 'No formal decision captured.',
+      followUp: meetingTownhallDraft.followUp.trim() || 'No follow-up captured.',
+      createdAt: new Date().toLocaleString(),
+    }
+    setTownhallsByCircle((previous) => ({
+      ...previous,
+      [activeCircle.id]: [...(previous[activeCircle.id] || []), townhallRecord],
+    }))
+    setMeetingTownhallDraft({ announcement: '', decision: '', followUp: '' })
   }
 
   const alertFeed = [
@@ -1065,6 +1131,107 @@ function App() {
                   placeholder="Capture notes, ideas, and follow-ups like a whiteboard."
                 />
               </article>
+              {meetingType === 'governance' && (
+                <article className="meeting-card">
+                  <h4>Governance Election</h4>
+                  <input
+                    value={meetingElectionDraft.roleName}
+                    placeholder="Role to elect"
+                    onChange={(event) =>
+                      setMeetingElectionDraft((draft) => ({ ...draft, roleName: event.target.value }))
+                    }
+                  />
+                  <input
+                    value={meetingElectionDraft.nominee}
+                    placeholder="Nominee"
+                    onChange={(event) =>
+                      setMeetingElectionDraft((draft) => ({ ...draft, nominee: event.target.value }))
+                    }
+                  />
+                  <textarea
+                    rows={3}
+                    value={meetingElectionDraft.rationale}
+                    placeholder="Election rationale"
+                    onChange={(event) =>
+                      setMeetingElectionDraft((draft) => ({ ...draft, rationale: event.target.value }))
+                    }
+                  />
+                  <button type="button" className="action-btn" onClick={addElectionFromMeeting}>
+                    Record Election
+                  </button>
+                  <p className="filter-meta">
+                    {((electionsByCircle[activeCircle.id] || []).length)} election records in this circle
+                  </p>
+                </article>
+              )}
+              {meetingType === 'retro' && (
+                <article className="meeting-card">
+                  <h4>Retro Outcomes</h4>
+                  <textarea
+                    rows={2}
+                    value={meetingRetroDraft.wentWell}
+                    placeholder="What went well?"
+                    onChange={(event) =>
+                      setMeetingRetroDraft((draft) => ({ ...draft, wentWell: event.target.value }))
+                    }
+                  />
+                  <textarea
+                    rows={2}
+                    value={meetingRetroDraft.toImprove}
+                    placeholder="What needs improvement?"
+                    onChange={(event) =>
+                      setMeetingRetroDraft((draft) => ({ ...draft, toImprove: event.target.value }))
+                    }
+                  />
+                  <input
+                    value={meetingRetroDraft.experiment}
+                    placeholder="Next experiment"
+                    onChange={(event) =>
+                      setMeetingRetroDraft((draft) => ({ ...draft, experiment: event.target.value }))
+                    }
+                  />
+                  <button type="button" className="action-btn" onClick={addRetroFromMeeting}>
+                    Record Retro
+                  </button>
+                  <p className="filter-meta">
+                    {((retrosByCircle[activeCircle.id] || []).length)} retro records in this circle
+                  </p>
+                </article>
+              )}
+              {meetingType === 'townhall' && (
+                <article className="meeting-card">
+                  <h4>Town Hall Capture</h4>
+                  <textarea
+                    rows={2}
+                    value={meetingTownhallDraft.announcement}
+                    placeholder="Announcement"
+                    onChange={(event) =>
+                      setMeetingTownhallDraft((draft) => ({ ...draft, announcement: event.target.value }))
+                    }
+                  />
+                  <textarea
+                    rows={2}
+                    value={meetingTownhallDraft.decision}
+                    placeholder="Decision (if any)"
+                    onChange={(event) =>
+                      setMeetingTownhallDraft((draft) => ({ ...draft, decision: event.target.value }))
+                    }
+                  />
+                  <input
+                    value={meetingTownhallDraft.followUp}
+                    placeholder="Follow-up owner/action"
+                    onChange={(event) =>
+                      setMeetingTownhallDraft((draft) => ({ ...draft, followUp: event.target.value }))
+                    }
+                  />
+                  <button type="button" className="action-btn" onClick={addTownhallFromMeeting}>
+                    Record Town Hall Item
+                  </button>
+                  <p className="filter-meta">
+                    {((townhallsByCircle[activeCircle.id] || []).length)} town hall records in this circle
+                  </p>
+                </article>
+              )}
             </div>
           </section>
         )}

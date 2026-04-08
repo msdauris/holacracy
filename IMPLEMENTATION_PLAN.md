@@ -135,7 +135,59 @@ Minimum KPI set:
 
 Publish to workspace and embed in Confluence hub.
 
-## 8) Ownership and Cadence
+## 8) Meeting Orchestration (Teams + Slack)
+
+To move from simple "meeting launch" to production behavior, implement lookup-or-create orchestration:
+
+- If recurring meeting exists for `(CircleId + MeetingType + Platform)`, open existing meeting.
+- If no meeting exists, create one via API and register it for future reuse.
+
+### 8.1 Meeting Registry (SharePoint List)
+
+Create `MeetingRegistry` with these fields:
+- `CircleId` (text, required)
+- `MeetingType` (choice: tactical, governance, retro, townhall)
+- `Platform` (choice: Teams, Slack)
+- `MeetingId` (text)
+- `JoinUrl` (hyperlink)
+- `RecurrencePattern` (text/json)
+- `Owner` (person)
+- `IsActive` (yes/no)
+- `LastValidatedAt` (datetime)
+
+### 8.2 Runtime Meeting Logic
+
+On "Start Meeting":
+1. Query `MeetingRegistry` for active record by `CircleId + MeetingType + Platform`.
+2. If found, open `JoinUrl`.
+3. If missing, create recurring meeting in target platform.
+4. Persist returned `MeetingId` + `JoinUrl` + recurrence in `MeetingRegistry`.
+5. Open meeting URL and update `LastValidatedAt`.
+
+### 8.3 Teams API (Microsoft Graph) Notes
+
+- Use Graph to create and read meetings/events.
+- Support recurrence and timezone explicitly.
+- Recommended scopes (subject to tenant policy):
+  - `Calendars.ReadWrite`
+  - `OnlineMeetings.ReadWrite`
+- Prefer service account or designated owner for stable recurring series ownership.
+
+### 8.4 Slack Notes
+
+- For ad hoc/smaller circles, store canonical Slack meeting/channel destination in registry.
+- Reuse existing channel/huddle destination where possible.
+- Keep same lookup-or-create pattern for consistency.
+
+### 8.5 Reliability Controls
+
+- Use idempotency key to avoid duplicate recurring meetings:
+  - `circleId + meetingType + platform`
+- Add retry/backoff for transient API failures.
+- Add fallback path: if API fails, open platform home and log incident.
+- Track meeting creation/update failures in monitoring dashboard.
+
+## 9) Ownership and Cadence
 
 Define named owners for:
 - SharePoint data model
@@ -147,9 +199,9 @@ Define named owners for:
 Operational cadence:
 - Weekly tactical review (projects, blockers, next actions)
 - Monthly governance review (roles/purpose/domain updates)
-- Quarterly system audit (schema, automation drift, KPI usefulness)
+- Quarterly system audit (schema, automation drift, KPI usefulness, meeting registry hygiene)
 
-## 9) Security, Compliance, and Control
+## 10) Security, Compliance, and Control
 
 - Use Entra ID for person/identity mapping.
 - Apply role-based permissions in SharePoint and Confluence.
@@ -157,7 +209,7 @@ Operational cadence:
 - Maintain audit trail for role changes and ratifications.
 - Maintain a break-glass admin procedure and change log.
 
-## 10) Rollout Plan (4-Week Sequence)
+## 11) Rollout Plan (4-Week Sequence)
 
 ### Week 1: Foundation
 - Stand up SharePoint lists
@@ -168,28 +220,32 @@ Operational cadence:
 - Implement flows A-C
 - Create Power BI v1 model
 - Embed Visio and Power BI in Confluence
+- Implement meeting lookup-or-create API path and MeetingRegistry
 
 ### Week 3: Pilot
 - Pilot with one circle
 - Track stale reduction and overdue action reduction
 - Tune automations and statuses
+- Validate recurring meeting reuse behavior for tactical/governance/retro/townhall
 
 ### Week 4: Scale
 - Roll out to remaining circles
 - Finalize SOPs and ownership model
 - Start ongoing cadence and change governance
 
-## 11) Immediate Action Checklist
+## 12) Immediate Action Checklist
 
 - [ ] Confirm M365 (E3/E5) and Power Automate entitlements
 - [ ] Confirm Jira/Confluence cloud plan and migration timeline
 - [ ] Approve SharePoint schema and data owners
 - [ ] Approve Slack posting policy for automations
 - [ ] Implement Jira Next Action type + fields
+- [ ] Create `MeetingRegistry` SharePoint list
+- [ ] Implement Teams/Slack meeting lookup-or-create flow
 - [ ] Publish Confluence hub v1
 - [ ] Launch pilot circle
 
-## 12) Definition of Done
+## 13) Definition of Done
 
 Production readiness is achieved when:
 - Confluence hub is the primary team entry point
@@ -198,3 +254,4 @@ Production readiness is achieved when:
 - Alert flows run reliably and are monitored
 - Power BI reflects current operational health
 - Governance and tactical processes are clearly separated in behavior and tooling
+- Meeting launch reuses recurring meetings when available and creates them only when missing
