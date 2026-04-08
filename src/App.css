@@ -398,6 +398,80 @@
   padding: 12px;
 }
 
+.map-meta {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  font-size: 0.8rem;
+  color: #475569;
+}
+
+.org-map-wrap {
+  border: 1px solid #dbeafe;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.org-map-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.map-bg {
+  fill: #f8fbff;
+}
+
+.map-link {
+  stroke: #cbd5e1;
+  stroke-width: 2;
+}
+
+.map-node-group {
+  cursor: pointer;
+  transition: transform 200ms ease;
+}
+
+.map-node {
+  fill: #dbeafe;
+  stroke: #93c5fd;
+  stroke-width: 2;
+}
+
+.map-node.active {
+  fill: #c7d2fe;
+  stroke: #6366f1;
+}
+
+.map-node.at-risk {
+  fill: #fee2e2;
+  stroke: #fca5a5;
+}
+
+.map-vacancy-ring {
+  fill: none;
+  stroke: #22d3ee;
+  stroke-width: 3;
+  stroke-dasharray: 8 6;
+}
+
+.map-label,
+.map-sub {
+  text-anchor: middle;
+  fill: #0f172a;
+  pointer-events: none;
+}
+
+.map-label {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.map-sub {
+  font-size: 0.75rem;
+}
+
 .embedded-card h4 {
   margin: 0 0 6px;
   font-size: 0.92rem;

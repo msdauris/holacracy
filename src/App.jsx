@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 
 const TOOL_LABELS = {
@@ -329,6 +329,7 @@ const circles = [
 const tabs = [
   { id: 'roles', label: 'Roles' },
   { id: 'projects', label: 'Projects' },
+  { id: 'org-map', label: 'Org Map' },
   { id: 'next-actions', label: 'Next Actions' },
   { id: 'governance', label: 'Governance' },
   { id: 'notifications', label: 'Notifications' },
@@ -482,6 +483,16 @@ function App() {
   const [activeCircleId, setActiveCircleId] = useState(circles[0].id)
   const [activeTab, setActiveTab] = useState('roles')
   const [exportMessage, setExportMessage] = useState('')
+  const [visualTick, setVisualTick] = useState(0)
+  const [lastMapRefresh, setLastMapRefresh] = useState(new Date())
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setVisualTick((tick) => tick + 1)
+      setLastMapRefresh(new Date())
+    }, 5000)
+    return () => clearInterval(timer)
+  }, [])
 
   const activeCircle = useMemo(
     () => circles.find((circle) => circle.id === activeCircleId) || circles[0],
@@ -572,6 +583,38 @@ function App() {
       description: 'Governance decisions with owners, dates, and follow-up actions.',
     },
   ]
+
+  const orgMapCircles = useMemo(
+    () =>
+      circles.map((circle, index) => {
+        const circleProjects = circle.projects.map((project) => {
+          const daysSinceUpdate = getDaysSince(project.lastUpdated)
+          const isStalled = project.status !== 'done' && daysSinceUpdate >= STALE_DAYS
+          return { ...project, isStalled }
+        })
+        const stalledCount = circleProjects.filter((project) => project.isStalled).length
+        const vacancyCount = circle.roles.filter((role) => !role.assignedPerson).length
+        const roleCount = circle.roles.length
+        const projectCount = circle.projects.length
+        const radius = 62 + roleCount * 5 + projectCount * 2
+        const x = 170 + index * 230
+        const y = 180 + (index % 2 === 0 ? 0 : 70)
+        const pulse = (visualTick % 2 === 0 ? 1 : 1.04) + stalledCount * 0.01
+        return {
+          id: circle.id,
+          name: circle.name,
+          stalledCount,
+          vacancyCount,
+          roleCount,
+          projectCount,
+          x,
+          y,
+          radius,
+          pulse,
+        }
+      }),
+    [visualTick],
+  )
 
   return (
     <div className="app-shell">
@@ -764,6 +807,70 @@ function App() {
                     </div>
                   </article>
                 ))}
+              </div>
+            </>
+          )}
+
+          {activeTab === 'org-map' && (
+            <>
+              <div className="section-head">
+                <h3>Near Real-Time Org Map</h3>
+                <span className="tool-badge" title={TOOL_LABELS.visualization}>
+                  {TOOL_LABELS.visualization}
+                </span>
+              </div>
+              <p className="actions-intro">
+                Simulated live visualization (refreshing every 5 seconds) using circle, role, vacancy, and
+                project-health signals.
+              </p>
+              <div className="map-meta">
+                <span>Last refresh: {lastMapRefresh.toLocaleTimeString()}</span>
+                <span>Vacant role = cyan ring</span>
+                <span>Stalled projects = red intensity</span>
+              </div>
+              <div className="org-map-wrap">
+                <svg viewBox="0 0 760 420" className="org-map-svg" role="img" aria-label="Holacracy org map">
+                  <rect x="0" y="0" width="760" height="420" rx="16" className="map-bg" />
+                  {orgMapCircles.map((circle, index) => {
+                    const nextCircle = orgMapCircles[index + 1]
+                    if (!nextCircle) return null
+                    return (
+                      <line
+                        key={`${circle.id}-${nextCircle.id}`}
+                        x1={circle.x}
+                        y1={circle.y}
+                        x2={nextCircle.x}
+                        y2={nextCircle.y}
+                        className="map-link"
+                      />
+                    )
+                  })}
+                  {orgMapCircles.map((circle) => (
+                    <g
+                      key={circle.id}
+                      transform={`translate(${circle.x}, ${circle.y}) scale(${circle.pulse})`}
+                      onClick={() => setActiveCircleId(circle.id)}
+                      className="map-node-group"
+                    >
+                      <circle
+                        r={circle.radius}
+                        className={`map-node ${circle.id === activeCircle.id ? 'active' : ''} ${
+                          circle.stalledCount > 0 ? 'at-risk' : ''
+                        }`}
+                      />
+                      {circle.vacancyCount > 0 && <circle r={circle.radius + 8} className="map-vacancy-ring" />}
+                      <text className="map-label" y="-8">
+                        {circle.name}
+                      </text>
+                      <text className="map-sub" y="14">
+                        {circle.roleCount} roles | {circle.projectCount} projects
+                      </text>
+                      <text className="map-sub" y="32">
+                        {circle.vacancyCount} vacant | {circle.stalledCount} stalled
+                      </text>
+                    </g>
+                  ))}
+                </svg>
               </div>
             </>
           )}
