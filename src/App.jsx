@@ -337,6 +337,7 @@ const tabs = [
 
 const STALE_DAYS = 14
 const HUB_URL = 'https://confluence.company.com/display/HOL/Holacracy+Hub'
+const CURRENT_USER = 'Maria Costa'
 const NEXT_ACTION_FIELDS = [
   'actionId',
   'circleId',
@@ -450,6 +451,10 @@ function getDaysSince(dateText) {
   return Math.floor((now - updated) / (1000 * 60 * 60 * 24))
 }
 
+function getTodayIsoDate() {
+  return new Date().toISOString().slice(0, 10)
+}
+
 function toCsv(rows) {
   const header = NEXT_ACTION_FIELDS.join(',')
   const body = rows
@@ -485,6 +490,42 @@ function App() {
   const [exportMessage, setExportMessage] = useState('')
   const [visualTick, setVisualTick] = useState(0)
   const [lastMapRefresh, setLastMapRefresh] = useState(new Date())
+  const [customProjectsByCircle, setCustomProjectsByCircle] = useState({})
+  const [customActionsByCircle, setCustomActionsByCircle] = useState({})
+  const [isMeetingPanelOpen, setIsMeetingPanelOpen] = useState(false)
+  const [meetingChannel, setMeetingChannel] = useState('teams')
+  const [meetingType, setMeetingType] = useState('tactical')
+  const [whiteboardByCircle, setWhiteboardByCircle] = useState({})
+  const [projectFilters, setProjectFilters] = useState({
+    owner: 'all',
+    roleId: 'all',
+    status: 'all',
+    search: '',
+    sortBy: 'updated_desc',
+  })
+  const [actionFilters, setActionFilters] = useState({
+    owner: 'all',
+    roleId: 'all',
+    status: 'all',
+    priority: 'all',
+    search: '',
+    sortBy: 'due_asc',
+  })
+  const [meetingDraftProject, setMeetingDraftProject] = useState({
+    name: '',
+    roleId: '',
+    owner: CURRENT_USER,
+    tasks: '',
+  })
+  const [meetingDraftAction, setMeetingDraftAction] = useState({
+    actionTitle: '',
+    roleId: '',
+    owner: CURRENT_USER,
+    dueDate: getTodayIsoDate(),
+    priority: 'Medium',
+    tension: '',
+    idealOutcome: '',
+  })
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -499,9 +540,14 @@ function App() {
     [activeCircleId],
   )
 
+  const allCircleProjects = useMemo(
+    () => [...activeCircle.projects, ...(customProjectsByCircle[activeCircle.id] || [])],
+    [activeCircle, customProjectsByCircle],
+  )
+
   const projectsWithDerivedStatus = useMemo(
     () =>
-      activeCircle.projects.map((project) => {
+      allCircleProjects.map((project) => {
         const daysSinceUpdate = getDaysSince(project.lastUpdated)
         const isStalled = project.status !== 'done' && daysSinceUpdate >= STALE_DAYS
         return {
@@ -510,7 +556,7 @@ function App() {
           computedStatus: isStalled ? 'stalled' : project.status,
         }
       }),
-    [activeCircle.projects],
+    [allCircleProjects],
   )
 
   const unassignedRoles = activeCircle.roles.filter((role) => !role.assignedPerson)
@@ -525,15 +571,90 @@ function App() {
   )
   const filledRoles = activeCircle.roles.length - unassignedRoles.length
   const fillRate = Math.round((filledRoles / activeCircle.roles.length) * 100)
-  const circleNextActions = nextActions.filter((action) => action.circleId === activeCircle.id)
+  const circleNextActions = [
+    ...nextActions.filter((action) => action.circleId === activeCircle.id),
+    ...(customActionsByCircle[activeCircle.id] || []),
+  ]
   const overdueActions = circleNextActions.filter(
     (action) => action.status !== 'done' && getDaysSince(action.dueDate) > 0,
   )
 
+  const roleNameById = useMemo(
+    () => Object.fromEntries(activeCircle.roles.map((role) => [role.id, role.name])),
+    [activeCircle.roles],
+  )
+
+  const projectOwnerOptions = useMemo(
+    () =>
+      Array.from(new Set(projectsWithDerivedStatus.map((project) => project.owner))).filter(Boolean).sort(),
+    [projectsWithDerivedStatus],
+  )
+
+  const actionOwnerOptions = useMemo(
+    () => Array.from(new Set(circleNextActions.map((action) => action.owner))).filter(Boolean).sort(),
+    [circleNextActions],
+  )
+
+  const filteredProjects = useMemo(() => {
+    const searchText = projectFilters.search.trim().toLowerCase()
+    const filtered = projectsWithDerivedStatus.filter((project) => {
+      const ownerMatch =
+        projectFilters.owner === 'all' ||
+        (projectFilters.owner === 'me' && project.owner === CURRENT_USER) ||
+        (projectFilters.owner === 'unassigned' && project.owner === 'Unassigned') ||
+        project.owner === projectFilters.owner
+      const roleMatch = projectFilters.roleId === 'all' || project.roleId === projectFilters.roleId
+      const statusMatch =
+        projectFilters.status === 'all' || project.computedStatus === projectFilters.status
+      const searchMatch =
+        !searchText ||
+        project.name.toLowerCase().includes(searchText) ||
+        project.tasks.some((task) => task.toLowerCase().includes(searchText))
+      return ownerMatch && roleMatch && statusMatch && searchMatch
+    })
+
+    return filtered.sort((a, b) => {
+      if (projectFilters.sortBy === 'updated_asc') return a.lastUpdated.localeCompare(b.lastUpdated)
+      if (projectFilters.sortBy === 'name_asc') return a.name.localeCompare(b.name)
+      if (projectFilters.sortBy === 'stalled_first') {
+        return Number(b.computedStatus === 'stalled') - Number(a.computedStatus === 'stalled')
+      }
+      return b.lastUpdated.localeCompare(a.lastUpdated)
+    })
+  }, [projectsWithDerivedStatus, projectFilters])
+
+  const filteredNextActions = useMemo(() => {
+    const searchText = actionFilters.search.trim().toLowerCase()
+    const filtered = circleNextActions.filter((action) => {
+      const ownerMatch =
+        actionFilters.owner === 'all' ||
+        (actionFilters.owner === 'me' && action.owner === CURRENT_USER) ||
+        (actionFilters.owner === 'unassigned' && action.owner === 'Unassigned') ||
+        action.owner === actionFilters.owner
+      const roleMatch = actionFilters.roleId === 'all' || action.roleId === actionFilters.roleId
+      const statusMatch = actionFilters.status === 'all' || action.status === actionFilters.status
+      const priorityMatch =
+        actionFilters.priority === 'all' || action.priority === actionFilters.priority
+      const searchMatch =
+        !searchText ||
+        action.actionTitle.toLowerCase().includes(searchText) ||
+        action.tension.toLowerCase().includes(searchText) ||
+        action.idealOutcome.toLowerCase().includes(searchText)
+      return ownerMatch && roleMatch && statusMatch && priorityMatch && searchMatch
+    })
+
+    return filtered.sort((a, b) => {
+      if (actionFilters.sortBy === 'due_desc') return b.dueDate.localeCompare(a.dueDate)
+      if (actionFilters.sortBy === 'priority') return a.priority.localeCompare(b.priority)
+      if (actionFilters.sortBy === 'owner') return a.owner.localeCompare(b.owner)
+      return a.dueDate.localeCompare(b.dueDate)
+    })
+  }, [circleNextActions, actionFilters])
+
   const exportNextActionsCsv = () => {
     downloadText(
       `${activeCircle.id}-next-actions.csv`,
-      toCsv(circleNextActions),
+      toCsv(filteredNextActions),
       'text/csv;charset=utf-8',
     )
     setExportMessage('Exported CSV from mapped Jira-style action data.')
@@ -542,20 +663,85 @@ function App() {
   const exportNextActionsJson = () => {
     downloadText(
       `${activeCircle.id}-next-actions.json`,
-      JSON.stringify(circleNextActions, null, 2),
+      JSON.stringify(filteredNextActions, null, 2),
       'application/json;charset=utf-8',
     )
     setExportMessage('Exported JSON for automation/API handoff.')
   }
 
   const copyNextActionsMarkdown = async () => {
-    const markdown = toMarkdownTable(circleNextActions)
+    const markdown = toMarkdownTable(filteredNextActions)
     try {
       await navigator.clipboard.writeText(markdown)
       setExportMessage('Copied Markdown table for docs, Notion, or chat.')
     } catch {
       setExportMessage('Clipboard copy blocked. Use CSV/JSON download instead.')
     }
+  }
+
+  const launchMeeting = (channel) => {
+    setMeetingChannel(channel)
+    if (channel === 'teams') {
+      const url = `https://teams.microsoft.com/l/meeting/new?subject=${encodeURIComponent(
+        `${activeCircle.name} ${meetingType} meeting`,
+      )}`
+      window.open(url, '_blank', 'noopener,noreferrer')
+      return
+    }
+    window.open('https://app.slack.com/client', '_blank', 'noopener,noreferrer')
+  }
+
+  const addProjectFromMeeting = () => {
+    if (!meetingDraftProject.name.trim()) return
+    const newProject = {
+      id: `${activeCircle.id}-custom-project-${Date.now()}`,
+      roleId: meetingDraftProject.roleId || activeCircle.roles[0].id,
+      name: meetingDraftProject.name.trim(),
+      status: 'active',
+      owner: meetingDraftProject.owner || 'Unassigned',
+      lastUpdated: getTodayIsoDate(),
+      tasks: meetingDraftProject.tasks
+        .split(',')
+        .map((task) => task.trim())
+        .filter(Boolean),
+    }
+    setCustomProjectsByCircle((previous) => ({
+      ...previous,
+      [activeCircle.id]: [...(previous[activeCircle.id] || []), newProject],
+    }))
+    setMeetingDraftProject({ name: '', roleId: '', owner: CURRENT_USER, tasks: '' })
+  }
+
+  const addActionFromMeeting = () => {
+    if (!meetingDraftAction.actionTitle.trim()) return
+    const newAction = {
+      actionId: `NA-${Date.now()}`,
+      circleId: activeCircle.id,
+      roleId: meetingDraftAction.roleId || activeCircle.roles[0].id,
+      projectKey: `${activeCircle.id.toUpperCase().slice(0, 4)}-${Math.floor(Math.random() * 900 + 100)}`,
+      actionTitle: meetingDraftAction.actionTitle.trim(),
+      owner: meetingDraftAction.owner || 'Unassigned',
+      dueDate: meetingDraftAction.dueDate || getTodayIsoDate(),
+      status: 'new',
+      priority: meetingDraftAction.priority,
+      source: meetingType === 'governance' ? 'governance-followup' : meetingType,
+      createdFromDecisionId: 'meeting-capture',
+      tension: meetingDraftAction.tension.trim() || 'Captured in meeting.',
+      idealOutcome: meetingDraftAction.idealOutcome.trim() || 'Defined in follow-up.',
+    }
+    setCustomActionsByCircle((previous) => ({
+      ...previous,
+      [activeCircle.id]: [...(previous[activeCircle.id] || []), newAction],
+    }))
+    setMeetingDraftAction({
+      actionTitle: '',
+      roleId: '',
+      owner: CURRENT_USER,
+      dueDate: getTodayIsoDate(),
+      priority: 'Medium',
+      tension: '',
+      idealOutcome: '',
+    })
   }
 
   const alertFeed = [
@@ -587,7 +773,8 @@ function App() {
   const orgMapCircles = useMemo(
     () =>
       circles.map((circle, index) => {
-        const circleProjects = circle.projects.map((project) => {
+        const allProjects = [...circle.projects, ...(customProjectsByCircle[circle.id] || [])]
+        const circleProjects = allProjects.map((project) => {
           const daysSinceUpdate = getDaysSince(project.lastUpdated)
           const isStalled = project.status !== 'done' && daysSinceUpdate >= STALE_DAYS
           return { ...project, isStalled }
@@ -595,7 +782,7 @@ function App() {
         const stalledCount = circleProjects.filter((project) => project.isStalled).length
         const vacancyCount = circle.roles.filter((role) => !role.assignedPerson).length
         const roleCount = circle.roles.length
-        const projectCount = circle.projects.length
+        const projectCount = allProjects.length
         const radius = 62 + roleCount * 5 + projectCount * 2
         const x = 170 + index * 230
         const y = 180 + (index % 2 === 0 ? 0 : 70)
@@ -613,7 +800,7 @@ function App() {
           pulse,
         }
       }),
-    [visualTick],
+    [visualTick, customProjectsByCircle],
   )
 
   return (
@@ -637,7 +824,7 @@ function App() {
               >
                 <span className="circle-name">{circle.name}</span>
                 <span className="circle-meta">
-                  {circle.roles.length} roles, {circle.projects.length} projects
+                  {circle.roles.length} roles, {circle.projects.length + (customProjectsByCircle[circle.id]?.length || 0)} projects
                 </span>
               </button>
             ))}
@@ -721,19 +908,166 @@ function App() {
             <h2>{activeCircle.name} Circle</h2>
             <p>Prototype data model for role governance and execution visibility.</p>
           </div>
-          <div className="tab-row">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`tab-button ${activeTab === tab.id ? 'active' : ''}`}
-              >
-                {tab.label}
-              </button>
-            ))}
+          <div className="header-controls">
+            <button
+              type="button"
+              className="meeting-launch-btn"
+              onClick={() => setIsMeetingPanelOpen((open) => !open)}
+            >
+              {isMeetingPanelOpen ? 'Close Meeting Workspace' : 'Start Meeting'}
+            </button>
+            <div className="tab-row">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`tab-button ${activeTab === tab.id ? 'active' : ''}`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
         </header>
+
+        {isMeetingPanelOpen && (
+          <section className="meeting-panel">
+            <div className="section-head">
+              <h3>Meeting Workspace</h3>
+              <span className="tool-badge">
+                Live channel: {meetingChannel === 'teams' ? 'Microsoft Teams' : 'Slack'}
+              </span>
+            </div>
+            <div className="meeting-controls">
+              <label>
+                Meeting type
+                <select value={meetingType} onChange={(event) => setMeetingType(event.target.value)}>
+                  <option value="tactical">Tactical</option>
+                  <option value="governance">Governance</option>
+                  <option value="retro">Retro</option>
+                  <option value="townhall">Town Hall</option>
+                </select>
+              </label>
+              <button type="button" className="action-btn" onClick={() => launchMeeting('teams')}>
+                Start in Teams (structured)
+              </button>
+              <button type="button" className="action-btn" onClick={() => launchMeeting('slack')}>
+                Start in Slack (ad hoc)
+              </button>
+            </div>
+            <div className="meeting-grid">
+              <article className="meeting-card">
+                <h4>Create Jira-style Project</h4>
+                <input
+                  value={meetingDraftProject.name}
+                  placeholder="Project name"
+                  onChange={(event) =>
+                    setMeetingDraftProject((draft) => ({ ...draft, name: event.target.value }))
+                  }
+                />
+                <select
+                  value={meetingDraftProject.roleId}
+                  onChange={(event) =>
+                    setMeetingDraftProject((draft) => ({ ...draft, roleId: event.target.value }))
+                  }
+                >
+                  <option value="">Role</option>
+                  {activeCircle.roles.map((role) => (
+                    <option key={role.id} value={role.id}>
+                      {role.name}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={meetingDraftProject.owner}
+                  placeholder="Owner"
+                  onChange={(event) =>
+                    setMeetingDraftProject((draft) => ({ ...draft, owner: event.target.value }))
+                  }
+                />
+                <input
+                  value={meetingDraftProject.tasks}
+                  placeholder="Tasks (comma separated)"
+                  onChange={(event) =>
+                    setMeetingDraftProject((draft) => ({ ...draft, tasks: event.target.value }))
+                  }
+                />
+                <button type="button" className="action-btn" onClick={addProjectFromMeeting}>
+                  Add Project
+                </button>
+              </article>
+              <article className="meeting-card">
+                <h4>Create Jira-style Next Action</h4>
+                <input
+                  value={meetingDraftAction.actionTitle}
+                  placeholder="Action title"
+                  onChange={(event) =>
+                    setMeetingDraftAction((draft) => ({ ...draft, actionTitle: event.target.value }))
+                  }
+                />
+                <select
+                  value={meetingDraftAction.roleId}
+                  onChange={(event) =>
+                    setMeetingDraftAction((draft) => ({ ...draft, roleId: event.target.value }))
+                  }
+                >
+                  <option value="">Role</option>
+                  {activeCircle.roles.map((role) => (
+                    <option key={role.id} value={role.id}>
+                      {role.name}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={meetingDraftAction.owner}
+                  placeholder="Owner"
+                  onChange={(event) =>
+                    setMeetingDraftAction((draft) => ({ ...draft, owner: event.target.value }))
+                  }
+                />
+                <input
+                  type="date"
+                  value={meetingDraftAction.dueDate}
+                  onChange={(event) =>
+                    setMeetingDraftAction((draft) => ({ ...draft, dueDate: event.target.value }))
+                  }
+                />
+                <input
+                  value={meetingDraftAction.tension}
+                  placeholder="Tension"
+                  onChange={(event) =>
+                    setMeetingDraftAction((draft) => ({ ...draft, tension: event.target.value }))
+                  }
+                />
+                <input
+                  value={meetingDraftAction.idealOutcome}
+                  placeholder="Ideal outcome"
+                  onChange={(event) =>
+                    setMeetingDraftAction((draft) => ({ ...draft, idealOutcome: event.target.value }))
+                  }
+                />
+                <button type="button" className="action-btn" onClick={addActionFromMeeting}>
+                  Add Next Action
+                </button>
+              </article>
+              <article className="meeting-card">
+                <h4>Meeting Whiteboard (M365 style)</h4>
+                <textarea
+                  rows={9}
+                  value={whiteboardByCircle[activeCircle.id] || ''}
+                  onChange={(event) =>
+                    setWhiteboardByCircle((previous) => ({
+                      ...previous,
+                      [activeCircle.id]: event.target.value,
+                    }))
+                  }
+                  placeholder="Capture notes, ideas, and follow-ups like a whiteboard."
+                />
+              </article>
+            </div>
+          </section>
+        )}
 
         <section className="panel">
           {activeTab === 'roles' && (
@@ -782,8 +1116,83 @@ function App() {
                   {TOOL_LABELS.projects}
                 </span>
               </div>
+              <div className="filters-row">
+                <select
+                  value={projectFilters.owner}
+                  onChange={(event) =>
+                    setProjectFilters((filters) => ({ ...filters, owner: event.target.value }))
+                  }
+                >
+                  <option value="all">Owner: All</option>
+                  <option value="me">Assigned to me</option>
+                  <option value="unassigned">Unassigned</option>
+                  {projectOwnerOptions.map((owner) => (
+                    <option key={owner} value={owner}>
+                      {owner}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={projectFilters.roleId}
+                  onChange={(event) =>
+                    setProjectFilters((filters) => ({ ...filters, roleId: event.target.value }))
+                  }
+                >
+                  <option value="all">Role: All</option>
+                  {activeCircle.roles.map((role) => (
+                    <option key={role.id} value={role.id}>
+                      {role.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={projectFilters.status}
+                  onChange={(event) =>
+                    setProjectFilters((filters) => ({ ...filters, status: event.target.value }))
+                  }
+                >
+                  <option value="all">Status: All</option>
+                  <option value="active">Active</option>
+                  <option value="stalled">Stalled</option>
+                  <option value="done">Done</option>
+                </select>
+                <select
+                  value={projectFilters.sortBy}
+                  onChange={(event) =>
+                    setProjectFilters((filters) => ({ ...filters, sortBy: event.target.value }))
+                  }
+                >
+                  <option value="updated_desc">Sort: Last updated (newest)</option>
+                  <option value="updated_asc">Sort: Last updated (oldest)</option>
+                  <option value="stalled_first">Sort: Stalled first</option>
+                  <option value="name_asc">Sort: Name A-Z</option>
+                </select>
+                <input
+                  value={projectFilters.search}
+                  placeholder="Search projects or tasks"
+                  onChange={(event) =>
+                    setProjectFilters((filters) => ({ ...filters, search: event.target.value }))
+                  }
+                />
+                <button
+                  type="button"
+                  className="action-btn"
+                  onClick={() =>
+                    setProjectFilters({
+                      owner: 'all',
+                      roleId: 'all',
+                      status: 'all',
+                      search: '',
+                      sortBy: 'updated_desc',
+                    })
+                  }
+                >
+                  Clear
+                </button>
+              </div>
+              <p className="filter-meta">{filteredProjects.length} projects shown</p>
               <div className="card-grid">
-                {projectsWithDerivedStatus.map((project) => (
+                {filteredProjects.map((project) => (
                   <article key={project.id} className="card project-card">
                     <div className="card-title-row">
                       <h4>{project.name}</h4>
@@ -793,6 +1202,9 @@ function App() {
                     </div>
                     <p>
                       <strong>Owner:</strong> {project.owner}
+                    </p>
+                    <p>
+                      <strong>Role:</strong> {roleNameById[project.roleId] || project.roleId}
                     </p>
                     <p>
                       <strong>Last updated:</strong> {project.lastUpdated} ({project.daysSinceUpdate} days ago)
@@ -953,6 +1365,94 @@ function App() {
                 Tactical work items that move a present tension toward an ideal outcome.
                 These are operational/project-level actions, separate from governance role design.
               </p>
+              <div className="filters-row">
+                <select
+                  value={actionFilters.owner}
+                  onChange={(event) =>
+                    setActionFilters((filters) => ({ ...filters, owner: event.target.value }))
+                  }
+                >
+                  <option value="all">Owner: All</option>
+                  <option value="me">Assigned to me</option>
+                  <option value="unassigned">Unassigned</option>
+                  {actionOwnerOptions.map((owner) => (
+                    <option key={owner} value={owner}>
+                      {owner}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={actionFilters.roleId}
+                  onChange={(event) =>
+                    setActionFilters((filters) => ({ ...filters, roleId: event.target.value }))
+                  }
+                >
+                  <option value="all">Role: All</option>
+                  {activeCircle.roles.map((role) => (
+                    <option key={role.id} value={role.id}>
+                      {role.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={actionFilters.status}
+                  onChange={(event) =>
+                    setActionFilters((filters) => ({ ...filters, status: event.target.value }))
+                  }
+                >
+                  <option value="all">Status: All</option>
+                  <option value="new">New</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="blocked">Blocked</option>
+                  <option value="done">Done</option>
+                </select>
+                <select
+                  value={actionFilters.priority}
+                  onChange={(event) =>
+                    setActionFilters((filters) => ({ ...filters, priority: event.target.value }))
+                  }
+                >
+                  <option value="all">Priority: All</option>
+                  <option value="High">High</option>
+                  <option value="Medium">Medium</option>
+                  <option value="Low">Low</option>
+                </select>
+                <select
+                  value={actionFilters.sortBy}
+                  onChange={(event) =>
+                    setActionFilters((filters) => ({ ...filters, sortBy: event.target.value }))
+                  }
+                >
+                  <option value="due_asc">Sort: Due date (soonest)</option>
+                  <option value="due_desc">Sort: Due date (latest)</option>
+                  <option value="priority">Sort: Priority</option>
+                  <option value="owner">Sort: Owner</option>
+                </select>
+                <input
+                  value={actionFilters.search}
+                  placeholder="Search title, tension, outcome"
+                  onChange={(event) =>
+                    setActionFilters((filters) => ({ ...filters, search: event.target.value }))
+                  }
+                />
+                <button
+                  type="button"
+                  className="action-btn"
+                  onClick={() =>
+                    setActionFilters({
+                      owner: 'all',
+                      roleId: 'all',
+                      status: 'all',
+                      priority: 'all',
+                      search: '',
+                      sortBy: 'due_asc',
+                    })
+                  }
+                >
+                  Clear
+                </button>
+              </div>
+              <p className="filter-meta">{filteredNextActions.length} next actions shown</p>
               <div className="actions-toolbar">
                 <button type="button" className="action-btn" onClick={exportNextActionsCsv}>
                   Export CSV
@@ -966,7 +1466,7 @@ function App() {
                 {exportMessage && <span className="export-message">{exportMessage}</span>}
               </div>
               <div className="next-actions-grid">
-                {circleNextActions.map((action) => (
+                {filteredNextActions.map((action) => (
                   <article key={action.actionId} className="action-card">
                     <div className="card-title-row">
                       <h4>{action.actionTitle}</h4>
@@ -981,10 +1481,14 @@ function App() {
                       <strong>Ideal outcome:</strong> {action.idealOutcome}
                     </p>
                     <p>
+                      <strong>Owner:</strong> {action.owner}
+                    </p>
+                    <p>
                       <strong>Action ID:</strong> {action.actionId} | <strong>Project key:</strong> {action.projectKey}
                     </p>
                     <p>
-                      <strong>Owner:</strong> {action.owner} | <strong>Due date:</strong> {action.dueDate}
+                      <strong>Role:</strong> {roleNameById[action.roleId] || action.roleId} | <strong>Due date:</strong>{' '}
+                      {action.dueDate}
                     </p>
                     <p>
                       <strong>Priority:</strong> {action.priority} | <strong>Source:</strong> {action.source}

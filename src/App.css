@@ -154,6 +154,23 @@
   gap: 8px;
 }
 
+.header-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.meeting-launch-btn {
+  border: 1px solid #cbd5e1;
+  background: #111827;
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
 .tab-button {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
@@ -174,6 +191,63 @@
   border-radius: 14px;
   padding: 16px;
   background: #ffffff;
+}
+
+.meeting-panel {
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 14px;
+  background: #ffffff;
+}
+
+.meeting-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.meeting-controls label {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 0.86rem;
+  color: #334155;
+}
+
+.meeting-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+
+.meeting-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 10px;
+  background: #fcfcfd;
+  display: grid;
+  gap: 8px;
+}
+
+.meeting-card h4 {
+  margin: 0 0 2px;
+}
+
+.meeting-card input,
+.meeting-card select,
+.meeting-card textarea,
+.meeting-controls select,
+.filters-row select,
+.filters-row input {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 7px 9px;
+  font-size: 0.82rem;
+  font-family: inherit;
+  background: #fff;
 }
 
 .section-head {
@@ -369,6 +443,20 @@
   align-items: center;
   flex-wrap: wrap;
   margin-bottom: 12px;
+}
+
+.filters-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.filter-meta {
+  margin: 0 0 8px;
+  color: #64748b;
+  font-size: 0.8rem;
 }
 
 .action-btn {
